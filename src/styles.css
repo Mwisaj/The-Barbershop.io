@@ -1,0 +1,142 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: 'Delight';
+  src: url('/fonts/delight/Delight-SemiBold.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: dark;
+  --ink: #121110;
+  --paper: #191817;
+  --paper-2: #242220;
+  --foreground: #f4eee5;
+  --brass: var(--cta);
+  --brass-dark: var(--cta);
+  --rust: #ff9987;
+  --accent-strong: #a6382b;
+  --cta: #ff816b;
+  --cta-hover: #ffa18f;
+  --text-soft: #bdb5aa;
+  --line: #49433c;
+  --font-heading: 'Delight', Arial, sans-serif;
+  --font-body: 'Manrope', Arial, sans-serif;
+}
+
+@layer base {
+  body {
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+}
+
+@layer utilities {
+  .font-head {
+    font-family: var(--font-heading);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .font-body {
+    font-family: var(--font-body);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--foreground);
+}
+
+button,
+a,
+input,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: var(--brass);
+  color: var(--ink);
+}
+
+button,
+a {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 3px solid var(--brass);
+  outline-offset: 3px;
+}
+
+/* Keep interface icons white, including inherited and hover colors. */
+svg.lucide {
+  color: #fff;
+}
+
+svg.lucide.booking-button-icon {
+  color: #000;
+}
+
+.appointment-map {
+  height: 300px;
+  width: 100%;
+  isolation: isolate;
+  z-index: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--paper-2);
+  color-scheme: light;
+}
+.appointment-pin { background: transparent; border: 0; }
+.appointment-pin span {
+  display: block;
+  width: 28px;
+  height: 28px;
+  background: #a6382b;
+  border: 3px solid white;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  box-shadow: 0 2px 6px #0008;
+}
+.location-picker .leaflet-control-attribution { background: #fff; color: #222; }
+.location-picker .leaflet-control-attribution a { color: #075985; }
+.location-picker .leaflet-bar a { background: #242220; color: white; }
+.location-picker .leaflet-bar a:hover { background: #49433c; }
+
+@layer base {
+  input, textarea, select {
+    color: var(--foreground);
+    background-color: var(--paper-2);
+  }
+  input::placeholder, textarea::placeholder {
+    color: var(--text-soft);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}

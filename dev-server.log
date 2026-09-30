@@ -1,0 +1,17 @@
+Backend ready at http://127.0.0.1:3001
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: use --host to expose
+4:07:14 AM [vite] (client) hmr update /src/styles.css, /src/pages/HomePage.jsx
+4:11:42 AM [vite] (client) hmr update /src/styles.css, /src/pages/HomePage.jsx
+4:11:42 AM [vite] (client) hmr update /src/styles.css, /src/pages/HomePage.jsx
+4:11:43 AM [vite] (client) hmr update /src/styles.css, /src/pages/HomePage.jsx
+4:11:50 AM [vite] (client) hmr update /src/styles.css, /src/pages/HomePage.jsx
+4:11:52 AM [vite] (client) hmr update /src/styles.css, /src/pages/HomePage.jsx
+4:13:30 AM [vite] (client) hmr update /src/styles.css, /src/pages/HomePage.jsx
+4:13:30 AM [vite] (client) hmr update /src/styles.css, /src/pages/HomePage.jsx
+4:13:30 AM [vite] (client) hmr update /src/styles.css, /src/pages/HomePage.jsx
+4:14:03 AM [vite] (client) hmr update /src/styles.css, /src/pages/HomePage.jsx
+4:14:05 AM [vite] (client) hmr update /src/styles.css, /src/pages/HomePage.jsx
+4:15:19 AM [vite] (client) hmr update /src/styles.css, /src/pages/HomePage.jsx
+4:15:45 AM [vite] (client) hmr update /src/styles.css, /src/pages/HomePage.jsx
+4:15:46 AM [vite] (client) hmr update /src/styles.css, /src/pages/HomePage.jsx

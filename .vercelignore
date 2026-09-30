@@ -1,0 +1,6 @@
+.tools
+server/data
+backups
+*.log
+.env*
+images/hello.gif

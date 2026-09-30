@@ -1,0 +1,11 @@
+node_modules
+.tools
+.git
+.env
+.env.*
+server/data
+**/backups
+*.log
+images
+public
+dist
