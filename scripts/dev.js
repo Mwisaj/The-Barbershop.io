@@ -1,6 +1,6 @@
 import { parseArgs } from 'node:util';
 import { createServer } from 'vite';
-import { createApp } from '../server/index.js';
+import { createConfiguredApp } from '../server/index.js';
 import { loadLocalEnv } from '../server/loadEnv.js';
 
 loadLocalEnv();
@@ -23,6 +23,7 @@ async function stop(code = 0) {
   process.exitCode = code;
   api?.closeAllConnections();
   if (api?.listening) await new Promise(resolve => api.close(resolve));
+  await api?.storageClosed;
   await client?.close();
 }
 
@@ -41,7 +42,7 @@ try {
     || client.resolvedUrls.local[0]?.replace(/\/$/, '')
     || client.resolvedUrls.network[0]?.replace(/\/$/, '');
   if (!origin) throw new Error('Could not determine the frontend origin. Set APP_ORIGIN explicitly.');
-  api = createApp({ origin });
+  api = await createConfiguredApp({ origin });
   await new Promise((resolve, reject) => {
     api.once('error', reject);
     api.listen(3001, '127.0.0.1', resolve);

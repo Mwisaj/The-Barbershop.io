@@ -1,5 +1,7 @@
 ﻿# TJ Barbershop
 
+For MongoDB setup and migration, see [MONGODB.md](MONGODB.md). JSON storage, disk and backup instructions below apply only when `MONGODB_URI` is unset.
+
 React/Vite frontend and Node.js 24 backend. Bookings, customer locations, services, settings and gallery data are stored on the backend, not in the browser.
 
 ## Local development

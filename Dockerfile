@@ -7,6 +7,7 @@ COPY server ./server
 COPY src/config ./src/config
 COPY src/lib ./src/lib
 COPY scripts/backup.js ./scripts/backup.js
+COPY scripts/migrate-mongo.js ./scripts/migrate-mongo.js
 COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint
 RUN chmod +x /usr/local/bin/docker-entrypoint
 ENV NODE_ENV=production HOST=0.0.0.0

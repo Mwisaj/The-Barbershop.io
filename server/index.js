@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import { randomBytes, timingSafeEqual, createHash } from 'node:crypto';
+import { openMongoStore } from './mongoStore.js';
 import { resetEmailSender } from './resetEmail.js';
 import { loadLocalEnv } from './loadEnv.js';
 import { isIP } from 'node:net';
@@ -19,23 +20,20 @@ const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
 const text = (value, max) => typeof value === 'string' && value.trim().length > 0 && value.length <= max;
 const normalizePhone = value => String(value ?? '').replace(/\D/g, '');
 
-export function createApp({ dataDir = fileURLToPath(new URL('./data/', import.meta.url)), backupDir, origin = 'http://localhost:5173', secure = false, now = Date.now, sessionMs = 8 * 60 * 60 * 1000, trustedProxies = [], proxySecret = '', adminEmail = process.env.ADMIN_EMAIL || '', sendResetEmail = resetEmailSender() } = {}) {
+export function createApp({ mongoStore, dataDir = fileURLToPath(new URL('./data/', import.meta.url)), backupDir, origin = 'http://localhost:5173', secure = false, now = Date.now, sessionMs = 8 * 60 * 60 * 1000, trustedProxies = [], proxySecret = '', adminEmail = process.env.ADMIN_EMAIL || '', sendResetEmail = resetEmailSender() } = {}) {
   const resolveIp = clientIpResolver(trustedProxies);
   if (proxySecret && proxySecret.length < 32) throw new Error('PROXY_SECRET must contain at least 32 characters.');
-  mkdirSync(dataDir, { recursive: true });
+  if (!mongoStore) mkdirSync(dataDir, { recursive: true });
   const credentialsPath = resolve(dataDir, 'admin.json');
-  let credential = existsSync(credentialsPath) ? JSON.parse(readFileSync(credentialsPath, 'utf8')) : null;
-  const store = openDataStore(dataDir, { settings: DEFAULT_SETTINGS, services: DEFAULT_SERVICES, schedule: DEFAULT_SCHEDULE }, { backupDir });
-  let db = store.value;
+  let credential = !mongoStore && existsSync(credentialsPath) ? JSON.parse(readFileSync(credentialsPath, 'utf8')) : null;
+  let credentialRevision = -1;
+  const store = mongoStore || openDataStore(dataDir, { settings: DEFAULT_SETTINGS, services: DEFAULT_SERVICES, schedule: DEFAULT_SCHEDULE }, { backupDir });
+  let localDb = store.value;
   const sessions = new Map();
   const resets = new Map();
   const recoveryEmail = adminEmail.trim().toLowerCase();
   const attempts = new Map();
   let activePasswordChecks = 0;
-  const persist = next => {
-    store.persist(next);
-    db = next;
-  };
   const limit = (key, max) => {
     const timestamp = now();
     for (const [id, value] of attempts) if (value.until <= timestamp) attempts.delete(id);
@@ -44,10 +42,6 @@ export function createApp({ dataDir = fileURLToPath(new URL('./data/', import.me
     entry.count++;
     attempts.set(key, entry);
   };
-  const busy = date => [
-    ...Object.entries(db).filter(([key, b]) => key.startsWith('bookings:') && b.date === date && b.status !== 'cancelled').map(([, b]) => ({ start: timeToMinutes(b.time), end: timeToMinutes(b.time) + b.durationMinutes })),
-    ...(db['blocked:' + date] || []).map(time => ({ start: timeToMinutes(time), end: timeToMinutes(time) + db.schedule.slotMinutes })),
-  ];
   const server = createServer({ requestTimeout: 30000, headersTimeout: 15000 }, async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
@@ -59,7 +53,7 @@ export function createApp({ dataDir = fileURLToPath(new URL('./data/', import.me
     try {
       const url = new URL(req.url, origin);
       const path = url.pathname;
-      if (path === '/api/health' && req.method === 'GET') { send(store.healthy ? 200 : 503, { status: store.healthy ? 'ok' : 'unavailable' }); return; }
+      if (path === '/api/health' && req.method === 'GET') { const healthy = mongoStore ? await store.checkHealth() : store.healthy; send(healthy ? 200 : 503, { status: healthy ? 'ok' : 'unavailable' }); return; }
       let ip;
       if (proxySecret) {
         const provided = Buffer.from(String(req.headers['x-proxy-secret'] || ''));
@@ -95,6 +89,26 @@ export function createApp({ dataDir = fileURLToPath(new URL('./data/', import.me
         try { body = JSON.parse(raw); } catch { fail(400, 'Invalid JSON.'); }
         if (!body || typeof body !== 'object' || Array.isArray(body)) fail(400, 'Invalid request.');
       }
+      const snapshot = mongoStore ? await store.read() : null;
+      // Each Mongo request validates and writes against the same database revision.
+      // A concurrent update returns 409 instead of overwriting it or double booking.
+      const db = snapshot ? snapshot.value : localDb;
+      if (snapshot && snapshot.credentialRevision > credentialRevision) {
+        if (credential?.hash !== snapshot.credential?.hash || credential?.salt !== snapshot.credential?.salt) {
+          credential = snapshot.credential;
+          sessions.clear(); resets.clear();
+        }
+        credentialRevision = snapshot.credentialRevision;
+      }
+      const persist = next => {
+        if (mongoStore) return store.persist(next, snapshot);
+        store.persist(next); localDb = next;
+      };
+      const busy = date => [
+        ...Object.entries(db).filter(([key, b]) => key.startsWith('bookings:') && b.date === date && b.status !== 'cancelled').map(([, b]) => ({ start: timeToMinutes(b.time), end: timeToMinutes(b.time) + b.durationMinutes })),
+        ...(db['blocked:' + date] || []).map(time => ({ start: timeToMinutes(time), end: timeToMinutes(time) + db.schedule.slotMinutes })),
+      ];
+
       const token = req.headers.cookie?.split(';').map(v => v.trim()).find(v => v.startsWith('admin_session='))?.slice(14);
       for (const [id, expiry] of sessions) if (expiry <= now()) sessions.delete(id);
       const authed = !!token && sessions.has(token);
@@ -117,7 +131,7 @@ export function createApp({ dataDir = fileURLToPath(new URL('./data/', import.me
         if (action === 'delete') {
           if (!existing) fail(404, 'Image not found.');
           const next = gallery.filter(item => item.id !== id);
-          persist({ ...db, gallery: next }); send(200, galleryResult(next)); return;
+          await persist({ ...db, gallery: next }); send(200, galleryResult(next)); return;
         }
         if (action !== 'save' || !text(caption, 200)) fail(400, 'Enter an image caption (up to 200 characters).');
         if (id && !existing) fail(404, 'Image not found.');
@@ -130,7 +144,7 @@ export function createApp({ dataDir = fileURLToPath(new URL('./data/', import.me
         if (!existing && gallery.length >= 30) fail(400, 'The gallery can contain up to 30 images.');
         const item = { id: existing?.id ?? randomBytes(12).toString('hex'), caption: caption.trim(), src: unchanged ? existing.src : src };
         const next = existing ? gallery.map(entry => entry.id === id ? item : entry) : [...gallery, item];
-        persist({ ...db, gallery: next }); send(200, galleryResult(next)); return;
+        await persist({ ...db, gallery: next }); send(200, galleryResult(next)); return;
       }
       if (path === '/api/auth/session' && req.method === 'GET') { send(200, { authenticated: authed }); return; }
       if (path === '/api/auth/forgot-password' && req.method === 'POST') {
@@ -167,7 +181,8 @@ export function createApp({ dataDir = fileURLToPath(new URL('./data/', import.me
         try {
           const nextCredential = await hashPassword(newPassword);
           if (!valid()) fail(400, 'This reset link is invalid or expired. Request a new one.');
-          atomicJson(credentialsPath, nextCredential);
+          if (mongoStore) { await store.saveCredential(nextCredential, credential); credentialRevision++; }
+          else atomicJson(credentialsPath, nextCredential);
           credential = nextCredential;
           resets.clear(); sessions.clear();
           res.setHeader('Set-Cookie', cookie('', 0));
@@ -204,7 +219,8 @@ export function createApp({ dataDir = fileURLToPath(new URL('./data/', import.me
           if (!await verifyPassword(currentPassword, checkedCredential)) fail(400, 'Current password is incorrect.');
           const nextCredential = await hashPassword(newPassword);
           if (credential !== checkedCredential || !sessions.has(token) || sessions.get(token) <= now()) fail(401, 'Please sign in again.');
-          atomicJson(credentialsPath, nextCredential);
+          if (mongoStore) { await store.saveCredential(nextCredential, credential); credentialRevision++; }
+          else atomicJson(credentialsPath, nextCredential);
           credential = nextCredential;
           resets.clear();
           sessions.clear();
@@ -234,10 +250,10 @@ export function createApp({ dataDir = fileURLToPath(new URL('./data/', import.me
         if (key === 'schedule') valid = value && Array.isArray(value.enabledDays) && value.enabledDays.every(d => Number.isInteger(d) && d >= 0 && d <= 6) && timePattern.test(value.openTime) && timePattern.test(value.closeTime) && value.openTime < value.closeTime && Number.isInteger(value.slotMinutes) && value.slotMinutes > 0 && value.slotMinutes <= 1440;
         if (/^blocked:\d{4}-\d{2}-\d{2}$/.test(key)) valid = Array.isArray(value) && value.length <= 1440 && value.every(t => timePattern.test(t));
         if (typeof key === 'string' && key.startsWith('bookings:') && db[key] && ['pending', 'confirmed', 'completed', 'cancelled'].includes(value?.status)) {
-          persist({ ...db, [key]: { ...db[key], status: value.status } }); send(200, { saved: true }); return;
+          await persist({ ...db, [key]: { ...db[key], status: value.status } }); send(200, { saved: true }); return;
         }
         if (!valid) fail(400, 'Invalid settings.');
-        persist({ ...db, [key]: value }); send(200, { saved: true }); return;
+        await persist({ ...db, [key]: value }); send(200, { saved: true }); return;
       }
       if (path === '/api/availability' && req.method === 'GET') {
         const date = url.searchParams.get('date');
@@ -257,7 +273,7 @@ export function createApp({ dataDir = fileURLToPath(new URL('./data/', import.me
         const reference = 'TJ-' + randomBytes(12).toString('hex').toUpperCase();
         const booking = { reference, serviceId: service.id, serviceName: service.name, durationMinutes: service.duration, price: service.price, date, time, name: name.trim(), phone: phone.trim(), notes: notes.trim(), status: 'pending', createdAt: new Date(now()).toISOString() };
         booking.location = location === null ? null : { lat: location.lat, lng: location.lng };
-        persist({ ...db, ['bookings:' + reference]: booking }); send(201, booking); return;
+        await persist({ ...db, ['bookings:' + reference]: booking }); send(201, booking); return;
       }
       if (['/api/bookings/lookup', '/api/bookings/cancel'].includes(path) && req.method === 'POST') {
         limit('lookup:' + ip, 20);
@@ -266,7 +282,7 @@ export function createApp({ dataDir = fileURLToPath(new URL('./data/', import.me
         if (path.endsWith('/cancel')) {
           if (booking.status === 'completed') fail(409, 'Completed bookings cannot be cancelled.');
           const updated = { ...booking, status: 'cancelled' };
-          persist({ ...db, ['bookings:' + booking.reference]: updated }); send(200, updated); return;
+          await persist({ ...db, ['bookings:' + booking.reference]: updated }); send(200, updated); return;
         }
         send(200, booking); return;
       }
@@ -276,8 +292,21 @@ export function createApp({ dataDir = fileURLToPath(new URL('./data/', import.me
       send(error.status || 500, { error: error.status ? error.message : 'Server error. Please try again.' });
     }
   });
-  server.once('close', () => store.close());
+  server.once('close', () => { server.storageClosed = Promise.resolve(store.close()).catch(() => console.error('Storage close failed.')); });
   return server;
+}
+
+export async function createConfiguredApp(options = {}) {
+  if (!process.env.MONGODB_URI) return createApp(options);
+  const store = await openMongoStore({ uri: process.env.MONGODB_URI, database: process.env.MONGODB_DB || 'barbershop' });
+  try {
+    await store.initialize({ settings: DEFAULT_SETTINGS, services: DEFAULT_SERVICES, schedule: DEFAULT_SCHEDULE });
+    const snapshot = await store.read();
+    if (!snapshot.credential && process.env.ADMIN_PASSWORD) await store.saveCredential(await hashPassword(process.env.ADMIN_PASSWORD), null);
+    delete process.env.ADMIN_PASSWORD;
+    if (process.env.NODE_ENV === 'production' && !(await store.read()).credential) throw new Error('Configure ADMIN_PASSWORD or import existing data before startup.');
+    return createApp({ ...options, mongoStore: store });
+  } catch (error) { await store.close(); throw error; }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -288,23 +317,25 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const origin = configuredOrigin.origin;
   if (production && configuredOrigin.protocol !== 'https:') throw new Error('Set APP_ORIGIN to your public HTTPS origin.');
   const dataDir = process.env.DATA_DIR ? resolve(process.env.DATA_DIR) : undefined;
-  if (production && !dataDir) throw new Error('Set DATA_DIR to your mounted persistent disk.');
+  if (production && !process.env.MONGODB_URI && !dataDir) throw new Error('Set DATA_DIR to your mounted persistent disk.');
   const publicRoot = resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
   const backupDir = process.env.BACKUP_DIR ? resolve(process.env.BACKUP_DIR) : undefined;
-  for (const directory of [dataDir, backupDir].filter(Boolean)) {
+  for (const directory of (process.env.MONGODB_URI ? [] : [dataDir, backupDir].filter(Boolean))) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     const actual = realpathSync(directory);
     if (actual === publicRoot || actual.startsWith(publicRoot + sep)) throw new Error('Data and backups must be outside the public build folder.');
   }
-  const credentialPath = resolve(dataDir || fileURLToPath(new URL('./data/', import.meta.url)), 'admin.json');
-  mkdirSync(resolve(credentialPath, '..'), { recursive: true, mode: 0o700 });
-  if (!existsSync(credentialPath) && process.env.ADMIN_PASSWORD) atomicJson(credentialPath, await hashPassword(process.env.ADMIN_PASSWORD));
-  delete process.env.ADMIN_PASSWORD;
-  if (production && !existsSync(credentialPath)) throw new Error('Configure ADMIN_PASSWORD on first startup, or run admin:setup.');
+  if (!process.env.MONGODB_URI) {
+    const credentialPath = resolve(dataDir || fileURLToPath(new URL('./data/', import.meta.url)), 'admin.json');
+    mkdirSync(resolve(credentialPath, '..'), { recursive: true, mode: 0o700 });
+    if (!existsSync(credentialPath) && process.env.ADMIN_PASSWORD) atomicJson(credentialPath, await hashPassword(process.env.ADMIN_PASSWORD));
+    delete process.env.ADMIN_PASSWORD;
+    if (production && !existsSync(credentialPath)) throw new Error('Configure ADMIN_PASSWORD on first startup, or run admin:setup.');
+  }
   const proxySecret = process.env.PROXY_SECRET || '';
   const trustedProxies = (process.env.TRUSTED_PROXIES || '').split(',').map(value => value.trim()).filter(Boolean);
   if (production && !proxySecret && !trustedProxies.length) throw new Error('Configure PROXY_SECRET for the Vercel gateway or an explicit TRUSTED_PROXIES list.');
-  const server = createApp({ origin, secure: production, dataDir, backupDir, proxySecret, trustedProxies });
+  const server = await createConfiguredApp({ origin, secure: production, dataDir, backupDir, proxySecret, trustedProxies });
   server.listen(Number(process.env.PORT || 3001), process.env.HOST || '127.0.0.1', () => console.log('Backend listening on port ' + (process.env.PORT || 3001)));
   const stop = () => { server.close(); server.closeIdleConnections(); setTimeout(() => process.exit(1), 25000).unref(); };
   process.once('SIGTERM', stop);

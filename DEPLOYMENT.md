@@ -1,5 +1,7 @@
 ﻿# Deployment: Vercel + Render or Railway
 
+For MongoDB setup and migration, see [MONGODB.md](MONGODB.md). JSON storage, disk and backup instructions below apply only when `MONGODB_URI` is unset.
+
 Use Vercel for React and choose **one** of Render or Railway for Node. These files prepare deployment; no hosting account, domain, disk, or service has been created by this task.
 
 ## 1. Preserve existing data first

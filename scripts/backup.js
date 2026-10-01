@@ -1,6 +1,10 @@
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { backupData, readBackup, restoreData } from '../server/dataStore.js';
+import { loadLocalEnv } from '../server/loadEnv.js';
+
+loadLocalEnv();
+if (process.env.MONGODB_URI) throw new Error('These backup commands are for JSON storage only. Use MongoDB Atlas backups or mongodump/mongorestore for MongoDB.');
 
 const dataDir = resolve(process.env.DATA_DIR || fileURLToPath(new URL('../server/data/', import.meta.url)));
 const backupDir = resolve(process.env.BACKUP_DIR || resolve(dataDir, 'backups'));

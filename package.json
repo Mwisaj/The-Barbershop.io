@@ -1,37 +1,39 @@
 {
-    "name":  "corner-chair-barbershop",
-    "private":  true,
-    "version":  "1.0.0",
-    "type":  "module",
-    "scripts":  {
-                    "dev":  "node scripts/dev.js",
-                    "dev:client":  "vite",
-                    "server":  "node server/index.js",
-                    "admin:setup":  "node server/setup-admin.js",
-                    "test":  "node --test server/*.test.js",
-                    "build":  "vite build",
-                    "preview":  "vite preview",
-                    "start":  "node server/index.js",
-                    "backup":  "node scripts/backup.js create",
-                    "backup:verify":  "node scripts/backup.js verify",
-                    "backup:restore":  "node scripts/backup.js restore",
-                    "deploy:check":  "node scripts/check-deployment.js"
-                },
-    "dependencies":  {
-                         "@tailwindcss/vite":  "^4.1.13",
-                         "leaflet":  "^1.9.4",
-                         "lucide-react":  "^0.544.0",
-                         "proper-lockfile":  "^4.1.2",
-                         "proxy-addr":  "^2.0.8",
-                         "react":  "^19.1.1",
-                         "react-dom":  "^19.1.1",
-                         "tailwindcss":  "^4.1.13"
-                     },
-    "devDependencies":  {
-                            "@vitejs/plugin-react":  "^5.0.2",
-                            "vite":  "^7.1.5"
-                        },
-    "engines":  {
-                    "node":  "24.x"
-                }
+  "name": "corner-chair-barbershop",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.js",
+    "dev:client": "vite",
+    "server": "node server/index.js",
+    "admin:setup": "node server/setup-admin.js",
+    "test": "node --test server/*.test.js",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "node server/index.js",
+    "backup": "node scripts/backup.js create",
+    "backup:verify": "node scripts/backup.js verify",
+    "backup:restore": "node scripts/backup.js restore",
+    "deploy:check": "node scripts/check-deployment.js",
+    "db:migrate": "node scripts/migrate-mongo.js"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.1.13",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.544.0",
+    "mongodb": "^7.7.0",
+    "proper-lockfile": "^4.1.2",
+    "proxy-addr": "^2.0.8",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "tailwindcss": "^4.1.13"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.0.2",
+    "vite": "^7.1.5"
+  },
+  "engines": {
+    "node": "24.x"
+  }
 }
